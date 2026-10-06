@@ -1,0 +1,6 @@
+# dsh-tone-layer bundle patch: one insert over the profile root.
+# `system-prompt` already lives in the host (dsh-base); this adds only the
+# tone section.
+- insert:
+    - id: tone-layer
+      name: '@max-null/dsh-tone-layer'
