@@ -1,10 +1,14 @@
 /**
- * `dsh-tone-layer`: inject one stable system-prompt section that sets **how the
- * agent talks**, without touching how it reasons. It owns no storage, tools, or
- * state — one section, chosen from a fixed set by config.
+ * `dsh-tone-layer`: inject stable system-prompt sections that set **how the
+ * agent talks** and **when it speaks up**, without touching how it reasons.
+ * It owns no storage, tools, or state.
  *
- * 语气与人格分开：这一层只配「说话方式」，性格与关系由记忆生长——硬编码人格会与
- * 「记忆决定人格」的方向打架。设计依据见 `docs/2026-09-17-语气层-讨论稿.md`。
+ * 两条轨，机制互不依赖：
+ * - `tone`（第一轨，始终注入）：只配「说话方式」。性格与关系由记忆生长——硬编码
+ *   人格会与「记忆决定人格」的方向打架。设计依据见 `docs/2026-09-17-语气层-讨论稿.md`。
+ * - `initiative`（第二轨，默认关闭）：只配「该不该开口」，写的是判据（情境 → 动作），
+ *   不是形容词。默认关闭是为了让「更主动」成为显式开关，而不是插件一升级就悄悄改了
+ *   所有会话的说话方式。
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -52,12 +56,35 @@ export const PLAIN_TEXT = `## 输出语气
 - 只改说话方式，不动推理形态：该查证的照查、该给的证据照给
 - 信息密度优先：判据与不确定之处一条不少`
 
+/**
+ * 第二轨：主动性判据。写的是**情境 → 动作**，不是形容词——「更热情」这类词每次
+ * 解释不同，「他的消息里带着情绪时先接住」才能锁定形态。它只管该不该开口，不改
+ * 说话方式，也不定义性格与关系（那些归记忆层）。
+ */
+export const INITIATIVE_TEXT = `## 主动性
+
+只管**该不该开口**：不改说话方式，不动推理形态，也不定义性格。
+
+- 他的消息里带着情绪（挫败、兴奋、吐槽、犹豫）时，先接住那句话，再干活；不要跳过情绪直接给任务清单。
+- 看到风险、更简单的做法，或他正要踩的坑，主动说一句，不等他问。
+- 他在闲聊时，允许话题停在闲聊上；不要急着把对话拉回正事。
+- 他明确在赶进度时（催、给死线、连着几条祈使句），少解释、少提议，直接给结果。
+- 判断类的事自己定：技术选型、该不该改、怎么改。拿不准他的**风格**偏好时，按他过往的偏好来，不要用问题打断他。
+- 反问只用在一种情况：缺的东西猜不出来，且猜错代价高。
+
+反面：把每轮都写成规格说明；用「用户」这类第三人称汇报口吻；为显得活泼而牺牲信息密度。`
+
 /** 档位。`daily` = 日常语气层；`plain` = 直说档。 */
 export type ToneMode = 'daily' | 'plain'
 
 export interface Config {
   /** 默认档位；省略即 `daily`。 */
   mode?: ToneMode
+  /**
+   * 第二轨（主动性）开关；省略即关闭，既有行为保持不变。
+   * @default false
+   */
+  initiative?: boolean
 }
 
 export function apply(ctx: Context, config?: Config): void {
@@ -69,4 +96,13 @@ export function apply(ctx: Context, config?: Config): void {
     order: -85,
     text,
   })
+
+  if (config?.initiative === true) {
+    ctx.systemPrompt.section({
+      name: 'initiative',
+      // 紧随第一轨：两条同属「说话方式」的基本设定，仍排在 persona 与记忆之前。
+      order: -84,
+      text: INITIATIVE_TEXT,
+    })
+  }
 }
